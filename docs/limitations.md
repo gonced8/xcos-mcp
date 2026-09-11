@@ -8,8 +8,9 @@
   compile-only diagnostics are not normalized into structured issue codes.
 - Scilab's graphical runtime is required for Xcos import/export and simulation,
   including on headless systems.
-- Long simulations are bounded by a subprocess timeout and response
-  downsampling, but there is no asynchronous job API or progress reporting.
+- Long simulations are bounded by a subprocess timeout. Inline responses are
+  downsampled and artifact mode avoids returning raw arrays, but there is no
+  asynchronous job API, retention policy, storage quota, or progress reporting.
 - Multi-column, complex, and event-valued recorder outputs need richer result
   schemas; the current CSV reader returns one scalar value column per recorder.
 - The HTTP transport has no built-in authentication or multi-tenant isolation.

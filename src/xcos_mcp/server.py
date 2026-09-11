@@ -14,6 +14,7 @@ from .model import inspect_model, save_model, validate_model
 from .process import runtime_info
 from .simulation import (
     analyze_step_response as calculate_step_response,
+    read_simulation_artifact_async,
     simulate_first_order_async,
     simulate_model_async,
 )
@@ -23,7 +24,8 @@ SERVER_INSTRUCTIONS = """Control the locally installed Scilab/Xcos runtime.
 
 Inspect installed blocks, create a native block template, save and inspect Xcos
 XML, validate a diagram with the real engine, and run simulations that return
-numerical TOWS_c signals. Paths are restricted by XCOS_ALLOWED_MODEL_ROOTS.
+numerical TOWS_c signals inline or as persistent artifacts. Paths are
+restricted by XCOS_ALLOWED_MODEL_ROOTS.
 """
 
 
@@ -101,13 +103,33 @@ async def simulate_xcos_model(
     outputs: list[str],
     timeout_seconds: float = 120.0,
     max_samples: int = 10_000,
+    result_mode: str = "inline",
 ) -> dict[str, Any]:
-    """Run a real diagram for any positive duration and return requested TOWS_c series."""
+    """Run a real diagram and return inline TOWS_c data or a compact persisted artifact manifest."""
     return await simulate_model_async(
         model_path,
         duration_seconds,
         outputs,
         timeout_seconds,
+        max_samples,
+        result_mode,
+    )
+
+
+@mcp.tool()
+async def read_xcos_simulation_artifact(
+    run_id: str,
+    outputs: list[str],
+    start_time_seconds: float | None = None,
+    end_time_seconds: float | None = None,
+    max_samples: int = 1_000,
+) -> dict[str, Any]:
+    """Return only selected TOWS_c signals and a bounded time window from a saved simulation artifact."""
+    return await read_simulation_artifact_async(
+        run_id,
+        outputs,
+        start_time_seconds,
+        end_time_seconds,
         max_samples,
     )
 

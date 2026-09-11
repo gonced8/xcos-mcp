@@ -75,6 +75,21 @@ The runner writes the following checked-in artifacts:
 - [`summary.json`](summary.json): model constants, MCP provenance, and metrics;
 - [`overview.svg`](overview.svg): plot generated from the returned CSV data.
 
+## Large-run data handling
+
+The checked-in runner requests all 24 channels inline because it is a local
+Python program that immediately writes the regression CSV and plot; no LLM
+context is involved in that stdio exchange. An interactive MCP client should
+usually avoid doing that for a long or high-rate run.
+
+Use `simulate_xcos_model` with `result_mode="artifact"` to have the MCP keep
+the raw Xcos recorder data under its artifact directory and return only a run
+ID, manifest, signal summaries, and checksums. Then call
+`read_xcos_simulation_artifact` with that run ID, selected signal names, and an
+optional time window. The reader has a 10,000-value aggregate response limit,
+so it is suitable for focused analysis without placing an entire telemetry
+archive in the tool-response context.
+
 ## Verified reference result
 
 The checked-in result was run through real Scilab/Xcos and the MCP. It is a

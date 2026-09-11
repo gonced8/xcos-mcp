@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import math
 from pathlib import Path
 import shutil
@@ -20,6 +22,9 @@ from .process import run_scilab_script, validate_timeout, wait_for_files
 DEFAULT_TIMEOUT_SECONDS = 120.0
 MAX_OUTPUTS = 64
 MAX_RETURNED_SAMPLES = 100_000
+MAX_ARTIFACT_READ_VALUES = 10_000
+RESULT_MODES = frozenset({"inline", "artifact"})
+ARTIFACT_SCHEMA_VERSION = 1
 
 
 def _validate_duration(duration: float) -> float:
@@ -75,10 +80,152 @@ def _validate_max_samples(maximum: int) -> int:
     return maximum
 
 
+def _validate_result_mode(mode: str) -> str:
+    if not isinstance(mode, str) or mode not in RESULT_MODES:
+        allowed = ", ".join(sorted(RESULT_MODES))
+        raise ValueError(f"result_mode must be one of: {allowed}")
+    return mode
+
+
+def _validate_time_window(start_time: float | None, end_time: float | None) -> tuple[float | None, float | None]:
+    for name, value in (("start_time_seconds", start_time), ("end_time_seconds", end_time)):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value)):
+            raise ValueError(f"{name} must be a finite number when provided")
+    start = None if start_time is None else float(start_time)
+    end = None if end_time is None else float(end_time)
+    if start is not None and end is not None and start > end:
+        raise ValueError("start_time_seconds cannot be greater than end_time_seconds")
+    return start, end
+
+
 def _times_equal(left: list[float], right: list[float]) -> bool:
     return len(left) == len(right) and all(
         math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12) for a, b in zip(left, right)
     )
+
+
+def _series_summary(path: Path) -> dict[str, float | int]:
+    """Stream scalar TOWS CSV metadata without retaining its samples."""
+    count = 0
+    first_time = last_time = minimum = maximum = None
+    with path.open(newline="", encoding="utf-8") as source:
+        for row in csv.reader(source):
+            if len(row) < 2:
+                continue
+            time, value = float(row[0]), float(row[1])
+            if not math.isfinite(time) or not math.isfinite(value):
+                raise RuntimeError(f"Xcos produced a non-finite sample in {path.name}")
+            if first_time is None:
+                first_time = time
+                minimum = maximum = value
+            last_time = time
+            minimum = min(minimum, value)
+            maximum = max(maximum, value)
+            count += 1
+    if not count:
+        raise RuntimeError(f"Xcos produced no numerical samples in {path.name}")
+    return {
+        "sample_count": count,
+        "time_start_seconds": first_time,
+        "time_end_seconds": last_time,
+        "minimum": minimum,
+        "maximum": maximum,
+    }
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _persist_simulation_artifact(
+    csv_paths: dict[str, Path],
+    *,
+    model_path: Path,
+    duration_seconds: float,
+    available_outputs: list[str],
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Persist raw Xcos recorder CSVs and return a compact manifest."""
+    destination = artifact_dir() / "simulations" / uuid.uuid4().hex
+    destination.mkdir(parents=True, exist_ok=False)
+    series: dict[str, dict[str, Any]] = {}
+    original_sample_counts: dict[str, int] = {}
+    total_bytes = 0
+    for name, source in csv_paths.items():
+        target = destination / f"{name}.csv"
+        shutil.copy2(source, target)
+        summary = _series_summary(target)
+        original_sample_counts[name] = int(summary["sample_count"])
+        size = target.stat().st_size
+        total_bytes += size
+        series[name] = {
+            "file": target.name,
+            "bytes": size,
+            "sha256": _sha256(target),
+            **summary,
+        }
+    run_id = destination.name
+    manifest = {
+        "schema_version": ARTIFACT_SCHEMA_VERSION,
+        "run_id": run_id,
+        "engine": "Scilab/Xcos",
+        "model_path": str(model_path),
+        "duration_seconds": duration_seconds,
+        "available_outputs": available_outputs,
+        "signals": series,
+    }
+    manifest_path = destination / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return {
+        "run_id": run_id,
+        "directory": str(destination),
+        "manifest_path": str(manifest_path),
+        "format": "one CSV file per scalar TOWS_c signal",
+        "total_bytes": total_bytes,
+        "signals": series,
+    }, original_sample_counts
+
+
+def _artifact_manifest(run_id: str) -> tuple[Path, dict[str, Any]]:
+    import re
+
+    if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id):
+        raise ValueError("run_id must be the 32-character hexadecimal artifact identifier")
+    directory = artifact_dir() / "simulations" / run_id
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Simulation artifact not found: {run_id}")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Simulation artifact manifest is invalid: {run_id}") from exc
+    if manifest.get("schema_version") != ARTIFACT_SCHEMA_VERSION or manifest.get("run_id") != run_id:
+        raise RuntimeError(f"Simulation artifact manifest is unsupported: {run_id}")
+    if not isinstance(manifest.get("signals"), dict):
+        raise RuntimeError(f"Simulation artifact manifest has no signal index: {run_id}")
+    return directory, manifest
+
+
+def _read_series_window(path: Path, start: float | None, end: float | None) -> tuple[list[float], list[float]]:
+    times: list[float] = []
+    values: list[float] = []
+    with path.open(newline="", encoding="utf-8") as source:
+        for row in csv.reader(source):
+            if len(row) < 2:
+                continue
+            time, value = float(row[0]), float(row[1])
+            if start is not None and time < start:
+                continue
+            if end is not None and time > end:
+                continue
+            times.append(time)
+            values.append(value)
+    if not times:
+        raise ValueError(f"No samples in the requested time window for {path.stem}")
+    return times, values
 
 
 def simulate_model(
@@ -87,11 +234,13 @@ def simulate_model(
     outputs: list[str],
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     max_samples: int = 10_000,
+    result_mode: str = "inline",
 ) -> dict[str, Any]:
-    """Import and simulate a saved model, returning each requested TOWS_c series."""
+    """Import and simulate a saved model, returning inline series or a persisted artifact."""
     duration = _validate_duration(duration_seconds)
     timeout = validate_timeout(timeout_seconds)
     max_samples = _validate_max_samples(max_samples)
+    mode = _validate_result_mode(result_mode)
     path, root = parse_xcos(model_path)
     names = _signal_names(outputs)
     available = recorded_outputs(root)
@@ -125,28 +274,95 @@ exit(0);
         if not wait_for_files(list(csv_paths.values())):
             raise RuntimeError(f"Scilab returned without producing simulation output: {result.output[-2000:]}")
 
-        series: dict[str, dict[str, list[float]]] = {}
-        original_sample_counts: dict[str, int] = {}
         for name, csv_path in csv_paths.items():
             if not csv_path.is_file():
                 raise RuntimeError(f"Xcos did not produce requested TOWS_c signal: {name}")
-            times, values = _read_series(csv_path)
-            original_sample_counts[name] = len(times)
-            times, values = _downsample(times, values, max_samples)
-            series[name] = {"time": times, "values": values}
+        if mode == "artifact":
+            artifact, original_sample_counts = _persist_simulation_artifact(
+                csv_paths,
+                model_path=path,
+                duration_seconds=duration,
+                available_outputs=available,
+            )
+        else:
+            series: dict[str, dict[str, list[float]]] = {}
+            original_sample_counts = {}
+            for name, csv_path in csv_paths.items():
+                times, values = _read_series(csv_path)
+                original_sample_counts[name] = len(times)
+                times, values = _downsample(times, values, max_samples)
+                series[name] = {"time": times, "values": values}
 
-    first_times = series[names[0]]["time"]
-    aligned = all(_times_equal(first_times, series[name]["time"]) for name in names[1:])
     response: dict[str, Any] = {
         "success": True,
         "engine": "Scilab/Xcos",
         "model_path": str(path),
         "duration_seconds": duration,
+        "result_mode": mode,
         "available_outputs": available,
+        "original_sample_counts": original_sample_counts,
+    }
+    if mode == "artifact":
+        response["artifact"] = artifact
+        response["downsampled"] = False
+        return response
+
+    first_times = series[names[0]]["time"]
+    aligned = all(_times_equal(first_times, series[name]["time"]) for name in names[1:])
+    response["series"] = series
+    response["aligned"] = aligned
+    response["downsampled"] = any(count > max_samples for count in original_sample_counts.values())
+    if aligned:
+        response["time"] = first_times
+        response["signals"] = {name: series[name]["values"] for name in names}
+    return response
+
+
+def read_simulation_artifact(
+    run_id: str,
+    outputs: list[str],
+    start_time_seconds: float | None = None,
+    end_time_seconds: float | None = None,
+    max_samples: int = 1_000,
+) -> dict[str, Any]:
+    """Read a bounded time window from a persisted simulation artifact."""
+    names = _signal_names(outputs)
+    start, end = _validate_time_window(start_time_seconds, end_time_seconds)
+    maximum = _validate_max_samples(max_samples)
+    effective_maximum = min(maximum, max(2, MAX_ARTIFACT_READ_VALUES // len(names)))
+    directory, manifest = _artifact_manifest(run_id)
+    index = manifest["signals"]
+    missing = [name for name in names if name not in index]
+    if missing:
+        available = sorted(index)
+        raise ValueError(f"Requested outputs are not in artifact: {missing}; available: {available}")
+
+    series: dict[str, dict[str, list[float]]] = {}
+    original_sample_counts: dict[str, int] = {}
+    for name in names:
+        metadata = index[name]
+        filename = metadata.get("file") if isinstance(metadata, dict) else None
+        if not isinstance(filename, str) or Path(filename).name != filename or not filename.endswith(".csv"):
+            raise RuntimeError(f"Simulation artifact has an unsafe signal file: {name}")
+        times, values = _read_series_window(directory / filename, start, end)
+        original_sample_counts[name] = len(times)
+        times, values = _downsample(times, values, effective_maximum)
+        series[name] = {"time": times, "values": values}
+
+    first_times = series[names[0]]["time"]
+    aligned = all(_times_equal(first_times, series[name]["time"]) for name in names[1:])
+    response: dict[str, Any] = {
+        "success": True,
+        "engine": manifest["engine"],
+        "artifact_id": run_id,
+        "duration_seconds": manifest["duration_seconds"],
+        "requested_outputs": names,
+        "time_window_seconds": [start, end],
+        "effective_max_samples_per_signal": effective_maximum,
         "series": series,
         "aligned": aligned,
         "original_sample_counts": original_sample_counts,
-        "downsampled": any(count > max_samples for count in original_sample_counts.values()),
+        "downsampled": any(count > effective_maximum for count in original_sample_counts.values()),
     }
     if aligned:
         response["time"] = first_times
@@ -330,6 +546,10 @@ def analyze_step_response(
 
 async def simulate_model_async(*args, **kwargs) -> dict[str, Any]:
     return await run_blocking(simulate_model, *args, **kwargs)
+
+
+async def read_simulation_artifact_async(*args, **kwargs) -> dict[str, Any]:
+    return await run_blocking(read_simulation_artifact, *args, **kwargs)
 
 
 async def simulate_first_order_async(*args, **kwargs) -> dict[str, Any]:

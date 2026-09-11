@@ -17,6 +17,7 @@ def test_generic_tool_surface_is_small_and_explicit():
         "save_xcos_model",
         "validate_xcos_model",
         "simulate_xcos_model",
+        "read_xcos_simulation_artifact",
         "simulate_first_order_model",
         "analyze_step_response",
     }

@@ -60,13 +60,24 @@ Example MCP client configuration:
 | `inspect_xcos_model` | Report blocks, links, duration, and `TOWS_c` outputs. |
 | `save_xcos_model` | Structurally check and atomically save Xcos XML. |
 | `validate_xcos_model` | Import a diagram using real Scilab/Xcos. |
-| `simulate_xcos_model` | Simulate a diagram and return named numerical series. |
+| `simulate_xcos_model` | Simulate a diagram; return named series inline or persist raw recorder data as an artifact. |
+| `read_xcos_simulation_artifact` | Read selected signals and a bounded time window from a persisted simulation artifact. |
 | `simulate_first_order_model` | Exercise the real first-order vertical slice. |
 | `analyze_step_response` | Calculate standard response and control-effort metrics. |
 
 Numerical extraction currently requires each requested signal to terminate in
 a `TOWS_c` block. Use `inspect_xcos_model` to find the configured variable
 names, then pass those names to `simulate_xcos_model`.
+
+`simulate_xcos_model` defaults to `result_mode="inline"` for small numerical
+jobs. For long, high-rate, or many-signal simulations, set
+`result_mode="artifact"`. The server stores raw per-signal CSV files and a
+manifest under `.xcos-mcp/artifacts/simulations`, returns compact metadata, and
+lets the client retrieve only the signals and time windows it needs with
+`read_xcos_simulation_artifact`. This prevents raw time series from needlessly
+occupying an LLM tool-response context. Artifact reads are capped at 10,000
+numeric values in total, with the effective per-signal sample limit reported
+in each response.
 
 ## Spacecraft example
 

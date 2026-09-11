@@ -30,14 +30,42 @@ def test_stdio_mcp_reaches_real_xcos_and_returns_numbers():
             async with ClientSession(*streams) as session:
                 await session.initialize()
                 names = {tool.name for tool in (await session.list_tools()).tools}
-                assert {"simulate_first_order_model", "simulate_xcos_model"} <= names
+                assert {
+                    "simulate_first_order_model",
+                    "simulate_xcos_model",
+                    "read_xcos_simulation_artifact",
+                } <= names
                 response = await session.call_tool(
                     "simulate_first_order_model",
                     {"duration_seconds": 2.0, "timeout_seconds": 90.0},
                 )
                 assert response.isError is False
-                return json.loads(response.content[0].text)
+                inline = json.loads(response.content[0].text)
+                artifact_response = await session.call_tool(
+                    "simulate_xcos_model",
+                    {
+                        "model_path": str(Path("examples/control/first_order.xcos").resolve()),
+                        "duration_seconds": 2.0,
+                        "outputs": ["first_order_y"],
+                        "timeout_seconds": 90.0,
+                        "result_mode": "artifact",
+                    },
+                )
+                assert artifact_response.isError is False
+                artifact = json.loads(artifact_response.content[0].text)
+                assert "signals" not in artifact
+                slice_response = await session.call_tool(
+                    "read_xcos_simulation_artifact",
+                    {
+                        "run_id": artifact["artifact"]["run_id"],
+                        "outputs": ["first_order_y"],
+                        "max_samples": 100,
+                    },
+                )
+                assert slice_response.isError is False
+                return {"inline": inline, "slice": json.loads(slice_response.content[0].text)}
 
     payload = asyncio.run(exercise())
-    assert payload["engine"] == "Scilab/Xcos"
-    assert payload["signals"]["y"][-1] > 0.8
+    assert payload["inline"]["engine"] == "Scilab/Xcos"
+    assert payload["inline"]["signals"]["y"][-1] > 0.8
+    assert payload["slice"]["signals"]["first_order_y"][-1] > 0.8
