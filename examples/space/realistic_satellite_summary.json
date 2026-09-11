@@ -1,0 +1,99 @@
+{
+  "engine": "Scilab/Xcos",
+  "mcp_tools_used": [
+    "inspect_xcos_model",
+    "validate_xcos_model",
+    "simulate_xcos_model"
+  ],
+  "model_imported": true,
+  "duration_seconds": 12000.0,
+  "sample_period_seconds": 1.0,
+  "returned_sample_count": 6000,
+  "original_sample_counts": {
+    "theta_roll": 12000,
+    "omega_roll": 12000,
+    "control_roll": 12000,
+    "disturbance_roll": 12000,
+    "theta_pitch": 12000,
+    "omega_pitch": 12000,
+    "control_pitch": 12000,
+    "disturbance_pitch": 12000,
+    "theta_yaw": 12000,
+    "omega_yaw": 12000,
+    "control_yaw": 12000,
+    "disturbance_yaw": 12000
+  },
+  "block_count": 138,
+  "link_count": 144,
+  "assumptions": {
+    "orbit": "circular 500 km representative orbital rate",
+    "dynamics": "uncoupled small-angle rigid-body axes",
+    "actuator": "reaction-wheel torque limit with first-order lag",
+    "disturbances": [
+      "gravity_gradient",
+      "aerodynamic",
+      "solar_pressure",
+      "magnetic",
+      "wheel_imbalance",
+      "constant_bias"
+    ]
+  },
+  "axes": {
+    "roll": {
+      "inertia": 120.0,
+      "initial_angle_deg": 5.0,
+      "initial_rate_deg_s": 0.05,
+      "kp": 0.048,
+      "kd": 3.84,
+      "phase": 0.0,
+      "bias": 1.5e-06
+    },
+    "pitch": {
+      "inertia": 100.0,
+      "initial_angle_deg": -3.0,
+      "initial_rate_deg_s": -0.03,
+      "kp": 0.04,
+      "kd": 3.2,
+      "phase": 1.1,
+      "bias": -1e-06
+    },
+    "yaw": {
+      "inertia": 80.0,
+      "initial_angle_deg": 8.0,
+      "initial_rate_deg_s": 0.04,
+      "kp": 0.032,
+      "kd": 2.56,
+      "phase": 2.2,
+      "bias": 8e-07
+    }
+  },
+  "metrics": {
+    "roll": {
+      "initial_angle_deg": 5.000002142878398,
+      "final_angle_deg": 0.03427128028854504,
+      "peak_absolute_angle_deg": 5.408153190938498,
+      "rms_angle_after_600s_deg": 0.01923295582109665,
+      "peak_body_rate_deg_s": 0.050002026781066945,
+      "peak_control_torque_Nm": 0.007211651092113384,
+      "peak_disturbance_torque_Nm": 3.077568412704759e-05
+    },
+    "pitch": {
+      "initial_angle_deg": -3.000001285727039,
+      "final_angle_deg": 0.017411129053030654,
+      "peak_absolute_angle_deg": 3.2423396773076267,
+      "rms_angle_after_600s_deg": 0.018812342986367067,
+      "peak_body_rate_deg_s": 0.030000070153049906,
+      "peak_control_torque_Nm": 0.0036037957327314718,
+      "peak_disturbance_torque_Nm": 2.470019586055469e-05
+    },
+    "yaw": {
+      "initial_angle_deg": 7.999997699027487,
+      "final_angle_deg": -0.024768793730627157,
+      "peak_absolute_angle_deg": 8.200715079562285,
+      "rms_angle_after_600s_deg": 0.03287629108824326,
+      "peak_body_rate_deg_s": 0.069392917948614,
+      "peak_control_torque_Nm": 0.005960352027192417,
+      "peak_disturbance_torque_Nm": 3.549923034187976e-05
+    }
+  }
+}

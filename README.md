@@ -68,6 +68,17 @@ Numerical extraction currently requires each requested signal to terminate in
 a `TOWS_c` block. Use `inspect_xcos_model` to find the configured variable
 names, then pass those names to `simulate_xcos_model`.
 
+## Spacecraft example
+
+The [three-axis spacecraft example](examples/space/README.md) builds a native
+Xcos diagram and then uses this MCP server to inspect, validate, and simulate
+it for 12,000 seconds. The checked-in run includes attitude, body-rate,
+reaction-wheel torque, and environmental-disturbance histories for all axes.
+
+```bash
+PYTHONPATH=src uv run python examples/space/run_realistic_satellite.py
+```
+
 ## Filesystem policy
 
 Model reads and writes are restricted to the server working directory and the

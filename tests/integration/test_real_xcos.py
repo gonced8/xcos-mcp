@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from tests.conftest import FIRST_ORDER_MODEL
+from tests.conftest import FIRST_ORDER_MODEL, REALISTIC_SATELLITE_MODEL
 from xcos_mcp.catalog import create_block_template, list_blocks
 from xcos_mcp.process import resolve_scilab, runtime_info
 from xcos_mcp.simulation import simulate_first_order, simulate_model
@@ -42,3 +42,18 @@ def test_real_first_order_then_generic_arbitrary_duration():
     assert result["duration_seconds"] == 7.25
     sampled_time = result["time"][-1]
     assert result["signals"]["first_order_y"][-1] == pytest.approx(1 - math.exp(-sampled_time), abs=0.01)
+
+
+def test_realistic_satellite_diagram_runs_in_native_xcos():
+    _require_native_xcos()
+    result = simulate_model(
+        str(REALISTIC_SATELLITE_MODEL),
+        30.0,
+        ["theta_roll", "disturbance_roll", "theta_pitch", "theta_yaw"],
+        180.0,
+    )
+    assert result["success"] is True
+    assert result["engine"] == "Scilab/Xcos"
+    assert result["aligned"] is True
+    assert result["original_sample_counts"]["theta_roll"] == 30
+    assert max(abs(value) for value in result["signals"]["disturbance_roll"]) > 1e-5
