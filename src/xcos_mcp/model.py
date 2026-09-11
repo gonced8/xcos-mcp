@@ -18,6 +18,10 @@ DEFAULT_MAX_MODEL_BYTES = 16 * 1024 * 1024
 LAYOUT_HORIZONTAL_SPACING = 105.0
 LAYOUT_VERTICAL_SPACING = 78.0
 LAYOUT_MARGIN = 40.0
+LAYOUT_MAIN_LANE_Y = 220.0
+LAYOUT_SIDE_LANE_Y = 420.0
+LAYOUT_RECORDER_LANE_Y = 820.0
+LAYOUT_CLOCK_LANE_Y = 920.0
 
 
 def _max_model_bytes() -> int:
@@ -136,13 +140,31 @@ def _geometry_position(block: ET.Element) -> tuple[float, float]:
     return float(geometry.attrib.get("x", 0)), float(geometry.attrib.get("y", 0))
 
 
-def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
-    """Lay out a top-level Xcos signal graph with readable left-to-right lanes.
+def _set_link_points(link: ET.Element, points: list[tuple[float, float]]) -> None:
+    """Replace an Xcos link's manual routing points.
 
-    The Xcos XML stores block geometry but does not require static link routes;
-    Xcos redraws routes when the diagram is opened. Feedback inputs on a
-    summation block are excluded from rank propagation so closed loops retain a
-    readable forward path instead of collapsing into one column.
+    Xcos uses the mxGraph ``Array as=\"points\"`` representation.  Supplying
+    two points gives the editor a stable, orthogonal-looking lane instead of a
+    long diagonal chosen from collapsed source geometry.
+    """
+    geometry = next((child for child in link if _local_name(child.tag) == "mxGeometry"), None)
+    if geometry is None:
+        geometry = ET.SubElement(link, "mxGeometry", {"as": "geometry"})
+    for child in list(geometry):
+        if child.attrib.get("as") == "points":
+            geometry.remove(child)
+    array = ET.SubElement(geometry, "Array", {"as": "points"})
+    for x, y in points:
+        ET.SubElement(array, "mxPoint", {"x": f"{x:g}", "y": f"{y:g}"})
+
+
+def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
+    """Lay out a top-level Xcos signal graph with explicit signal lanes.
+
+    The executable path runs left to right.  Feedback and disturbance branches
+    use lower lanes with explicit mxGraph waypoints; recorder and clock pairs
+    sit below the model.  This is deliberately topology based rather than tied
+    to a particular engineering domain.
     """
     blocks, links = _top_level_graph_objects(root)
     if not blocks:
@@ -162,26 +184,53 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
             port_order[port_id] = int(port.attrib.get("ordering", "1"))
 
     document_order = {identifier: index for index, identifier in enumerate(by_id)}
-    edges: list[tuple[str, str]] = []
+    connections: list[dict[str, object]] = []
     for link in links:
-        if _local_name(link.tag) != "ExplicitLink":
-            continue
         source = port_parent.get(link.attrib.get("source", ""))
         target = port_parent.get(link.attrib.get("target", ""))
         if not source or not target or source == target:
             continue
-        target_block = by_id[target]
-        # A later input on a SUMMATION block is normally feedback or a
-        # disturbance injection. It must not force the forward signal graph
-        # into a cyclic layout.
-        if (
-            target_block.attrib.get("interfaceFunctionName") == "SUMMATION"
-            and port_order.get(link.attrib.get("target", ""), 1) > 1
-        ):
+        connections.append({
+            "link": link,
+            "kind": _local_name(link.tag),
+            "source": source,
+            "target": target,
+            "target_order": port_order.get(link.attrib.get("target", ""), 1),
+        })
+
+    feedback_connections = [
+        connection for connection in connections
+        if connection["kind"] == "ExplicitLink"
+        and by_id[str(connection["target"])].attrib.get("interfaceFunctionName") == "SUMMATION"
+        and int(connection["target_order"]) > 1
+    ]
+    feedback_links = {id(connection["link"]) for connection in feedback_connections}
+    feedback_sources = {str(connection["source"]) for connection in feedback_connections}
+    ordinary_outgoing = {
+        source for source in by_id
+        if any(
+            connection["kind"] == "ExplicitLink"
+            and connection["source"] == source
+            and id(connection["link"]) not in feedback_links
+            for connection in connections
+        )
+    }
+    # A source used only as a secondary summation input is a disturbance or a
+    # feedback-conditioning branch.  Keep it outside the main signal lane.
+    side_blocks = feedback_sources - ordinary_outgoing
+
+    edges: list[tuple[str, str]] = []
+    for connection in connections:
+        if connection["kind"] != "ExplicitLink" or id(connection["link"]) in feedback_links:
             continue
+        source = str(connection["source"])
+        target = str(connection["target"])
+        if by_id[target].attrib.get("interfaceFunctionName") == "TOWS_c":
+            continue
+        target_block = by_id[target]
         # Most generated models serialize the forward path in block order.
-        # Ignore ordinary reverse links as feedback; SPLIT_f blocks are inserted
-        # after their source by Xcos generators and remain forward fan-outs.
+        # Ignore ordinary reverse links as feedback; the actual feedback link
+        # is routed below the main lane.
         if (
             by_id[source].attrib.get("interfaceFunctionName") != "SPLIT_f"
             and document_order[source] > document_order[target]
@@ -193,9 +242,7 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
     for _ in range(len(by_id)):
         changed = False
         for source, target in edges:
-            source_block = by_id[source]
-            increment = 0 if source_block.attrib.get("interfaceFunctionName") == "SPLIT_f" else 1
-            candidate = ranks[source] + increment
+            candidate = ranks[source] + 1
             if candidate > ranks[target]:
                 ranks[target] = candidate
                 changed = True
@@ -205,23 +252,84 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
     columns: dict[int, list[ET.Element]] = {}
     for block in blocks:
         identifier = block.attrib.get("id")
-        if identifier:
+        if identifier and identifier not in side_blocks and block.attrib.get("interfaceFunctionName") not in {"TOWS_c", "CLOCK_c"}:
             columns.setdefault(ranks[identifier], []).append(block)
     for rank, column in columns.items():
-        column.sort(key=lambda block: (
-            block.attrib.get("interfaceFunctionName") == "CLOCK_c",
-            block.attrib.get("interfaceFunctionName") == "TOWS_c",
-            block.attrib.get("id", ""),
-        ))
+        column.sort(key=lambda block: block.attrib.get("id", ""))
         for row, block in enumerate(column):
             geometry = _block_geometry(block)
             geometry.attrib["x"] = f"{LAYOUT_MARGIN + rank * LAYOUT_HORIZONTAL_SPACING:g}"
-            geometry.attrib["y"] = f"{LAYOUT_MARGIN + row * LAYOUT_VERTICAL_SPACING:g}"
+            geometry.attrib["y"] = f"{LAYOUT_MAIN_LANE_Y + row * LAYOUT_VERTICAL_SPACING:g}"
+
+    # Place secondary-input-only branches near the summation they feed, but in
+    # their own lower lane.  This is the familiar control-diagram convention.
+    for index, source in enumerate(sorted(side_blocks)):
+        target = next(str(item["target"]) for item in feedback_connections if item["source"] == source)
+        target_x, _ = _geometry_position(by_id[target])
+        geometry = _block_geometry(by_id[source])
+        direction = -1 if by_id[source].attrib.get("interfaceFunctionName") == "CONST_m" else 1
+        geometry.attrib["x"] = f"{target_x + direction * LAYOUT_HORIZONTAL_SPACING * 1.35:g}"
+        geometry.attrib["y"] = f"{LAYOUT_SIDE_LANE_Y + index * LAYOUT_VERTICAL_SPACING:g}"
+
+    # Recorder signals are vertically aligned with their measured source; the
+    # associated CLOCK_c goes directly beneath it.  This keeps telemetry out
+    # of the plant/controller signal path and avoids event-wire diagonals.
+    recorder_sources: dict[str, str] = {}
+    for connection in connections:
+        if (
+            connection["kind"] == "ExplicitLink"
+            and by_id[str(connection["target"])].attrib.get("interfaceFunctionName") == "TOWS_c"
+        ):
+            recorder_sources[str(connection["target"])] = str(connection["source"])
+    recorder_blocks = [block for block in blocks if block.attrib.get("interfaceFunctionName") == "TOWS_c"]
+    occupied_recorder_x: set[float] = set()
+    for row, recorder in enumerate(sorted(recorder_blocks, key=lambda block: block.attrib.get("id", ""))):
+        recorder_id = recorder.attrib.get("id", "")
+        source_x, _ = _geometry_position(by_id[recorder_sources[recorder_id]])
+        while source_x in occupied_recorder_x:
+            source_x += LAYOUT_HORIZONTAL_SPACING * 0.45
+        occupied_recorder_x.add(source_x)
+        geometry = _block_geometry(recorder)
+        geometry.attrib["x"] = f"{source_x:g}"
+        geometry.attrib["y"] = f"{LAYOUT_RECORDER_LANE_Y:g}"
+        for connection in connections:
+            if connection["target"] != recorder_id or connection["kind"] != "CommandControlLink":
+                continue
+            clock = by_id[str(connection["source"])]
+            clock_geometry = _block_geometry(clock)
+            clock_geometry.attrib["x"] = f"{source_x:g}"
+            clock_geometry.attrib["y"] = f"{LAYOUT_CLOCK_LANE_Y:g}"
+
+    # Route feedbacks into progressively lower lanes, while all other vertical
+    # connections get a short two-corner route.  The points are persisted in
+    # the .xcos file and respected when the editor is reopened.
+    feedback_order = sorted(
+        feedback_connections,
+        key=lambda item: abs(_geometry_position(by_id[str(item["source"])])[0] - _geometry_position(by_id[str(item["target"])])[0]),
+    )
+    feedback_lanes = {id(item["link"]): LAYOUT_SIDE_LANE_Y + 60.0 + index * 95.0 for index, item in enumerate(feedback_order)}
+    for connection in connections:
+        link = connection["link"]
+        source_x, source_y = _geometry_position(by_id[str(connection["source"])])
+        target_x, target_y = _geometry_position(by_id[str(connection["target"])])
+        if id(link) in feedback_lanes:
+            lane_y = feedback_lanes[id(link)]
+            _set_link_points(link, [(source_x + 32.0, lane_y), (target_x - 18.0, lane_y)])
+        elif abs(source_x - target_x) <= 1.0:
+            # Aligned recorder/clock pairs and vertical signal branches need no
+            # manual bend; Xcos renders them as a clean straight connection.
+            _set_link_points(link, [])
+        elif abs(source_y - target_y) > 1.0:
+            lane_y = (source_y + target_y) / 2.0
+            _set_link_points(link, [(source_x + 28.0, lane_y), (target_x - 16.0, lane_y)])
+        else:
+            _set_link_points(link, [])
     return {
         "applied": True,
         "reason": "forced" if force else "collapsed_geometry",
         "blocks_repositioned": len(blocks),
         "columns": len(columns),
+        "routed_links": len(connections),
     }
 
 
