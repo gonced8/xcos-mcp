@@ -1,0 +1,31 @@
+[project]
+name = "xcos-mcp"
+version = "0.3.0"
+description = "A generic Model Context Protocol server for Scilab Xcos"
+readme = "README.md"
+license = "GPL-3.0-only"
+authors = [{ name = "Gonçalo Raposo" }]
+dependencies = ["mcp>=1.0.0,<2.0.0"]
+requires-python = ">=3.10"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xcos_mcp"]
+
+[project.scripts]
+xcos-mcp = "xcos_mcp.server:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "integration: launches an MCP subprocess or real Scilab/Xcos",
+]
