@@ -90,11 +90,7 @@ work.
 
 ## Licence and provenance
 
-The current source tree is a clean reimplementation licensed under
-GNU GPL version 3 only; see [LICENSE](LICENSE). It does not redistribute Scilab
-macros, block catalogues, icons, or reference diagrams from the earlier
-candidate project. Installed Scilab files are discovered at runtime.
-
-The `main` branch begins with the clean GPL implementation. The original
-candidate remains configured only as the external `upstream` remote for
-technical provenance; its commits are not ancestors of this branch.
+The current source tree is an independent implementation licensed under GNU
+GPL version 3 only; see [LICENSE](LICENSE). It does not redistribute Scilab
+macros, block catalogues, icons, or reference diagrams. Installed Scilab files
+are discovered at runtime.

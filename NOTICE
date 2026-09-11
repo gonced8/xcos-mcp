@@ -6,12 +6,8 @@ Copyright (C) 2026 Gonçalo Raposo
 The source in the current release is licensed under GNU GPL version 3 only.
 See LICENSE.
 
-This repository began as a GitHub fork of
-Antniom/scilab-xcos-mcp-server. The current implementation does not include
-source code, web assets, extracted help, block metadata, macros, or reference
-diagrams from that project. That project remains configured only as the
-external `upstream` remote and is not part of this branch's history or release
-archives.
+The current implementation does not include third-party source code, web
+assets, extracted help, block metadata, macros, or reference diagrams.
 
 Scilab and Xcos are separate projects. Xcos MCP discovers and invokes an
 installed copy at runtime; their files are not redistributed in the Python
