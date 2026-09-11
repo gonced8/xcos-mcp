@@ -64,6 +64,7 @@ class Diagram:
     def __init__(self) -> None:
         self.blocks: list[str] = []
         self.connections: list[tuple[Signal, int, int, bool]] = []
+        self.positions: dict[int, tuple[float, float]] = {}
 
     def block(self, interface: str, x: float, y: float, commands: list[str], label: str) -> Signal:
         index = len(self.blocks) + 1
@@ -77,6 +78,7 @@ class Diagram:
             ],
         ]
         self.blocks.append("\n".join(statements))
+        self.positions[index] = (x, y)
         return Signal(index)
 
     def connect(self, source: Signal, target: Signal, target_port: int = 1, *, event: bool = False) -> None:
@@ -179,7 +181,21 @@ class Diagram:
             remaining = list(targets)
             upstream = source
             while len(remaining) > 1:
-                splitter = self.block("SPLIT_f", 0, 0, [], f"fanout_{len(self.blocks) + 1}")
+                source_x, source_y = self.positions[upstream.block]
+                target_x = sum(self.positions[target][0] for target, _ in remaining) / len(remaining)
+                target_y = sum(self.positions[target][1] for target, _ in remaining) / len(remaining)
+                # SPLIT_f is a junction on the outgoing link, not a hidden
+                # source at the canvas origin.  Place each generated fan-out
+                # just downstream of its source and bias it gently toward its
+                # consumers, preserving the model's authored signal flow.
+                direction = 1.0 if target_x >= source_x else -1.0
+                splitter = self.block(
+                    "SPLIT_f",
+                    source_x + direction * 35.0,
+                    source_y + (target_y - source_y) * 0.15,
+                    [],
+                    f"fanout_{len(self.blocks) + 1}",
+                )
                 expanded.append((upstream, splitter.block, 1, False))
                 take = len(remaining) if len(remaining) <= 3 else 2
                 for output_port in range(1, take + 1):
