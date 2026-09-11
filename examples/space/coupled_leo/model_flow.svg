@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title description">
+  <title id="title">Coupled LEO Xcos simulation flow</title>
+  <desc id="description">A native Xcos model propagates orbital and attitude states, combines environmental forces and control torques, then records numerical telemetry for MCP clients.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#8b949e"/>
+    </marker>
+    <style>
+      .bg { fill: #0d1117; }
+      .panel { fill: #161b22; stroke: #30363d; stroke-width: 2; }
+      .orbit { fill: #172b45; stroke: #58a6ff; stroke-width: 2; }
+      .environment { fill: #2d2113; stroke: #f0883e; stroke-width: 2; }
+      .attitude { fill: #182d22; stroke: #3fb950; stroke-width: 2; }
+      .data { fill: #2b203b; stroke: #d2a8ff; stroke-width: 2; }
+      .arrow { fill: none; stroke: #8b949e; stroke-width: 2.5; marker-end: url(#arrow); }
+      .title { fill: #f0f6fc; font: 700 25px sans-serif; }
+      .subtitle { fill: #8b949e; font: 16px sans-serif; }
+      .heading { fill: #f0f6fc; font: 700 18px sans-serif; }
+      .body { fill: #c9d1d9; font: 15px sans-serif; }
+      .small { fill: #8b949e; font: 13px sans-serif; }
+      .earth { fill: #1f6feb; stroke: #58a6ff; stroke-width: 2; }
+      .orbitline { fill: none; stroke: #79c0ff; stroke-width: 3; stroke-dasharray: 9 7; }
+      .satellite { fill: #f0f6fc; stroke: #58a6ff; stroke-width: 2; }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="700"/>
+  <text x="55" y="55" class="title">Coupled LEO orbit, attitude, and MCP telemetry path</text>
+  <text x="55" y="82" class="subtitle">16 continuous states • 291 native Xcos blocks • 24 TOWS_c recorder channels</text>
+
+  <rect class="panel" x="55" y="120" width="320" height="430" rx="16"/>
+  <text x="80" y="155" class="heading">Orbital state propagation</text>
+  <ellipse class="orbitline" cx="215" cy="315" rx="125" ry="76"/>
+  <circle class="earth" cx="215" cy="315" r="48"/>
+  <path d="M176 294 C191 278 237 278 253 294 C238 311 191 311 176 294" fill="#3fb950" opacity=".75"/>
+  <path d="M171 328 C194 344 232 344 257 328" fill="none" stroke="#3fb950" stroke-width="6" opacity=".75"/>
+  <path class="satellite" d="M329 252 l13 8 -13 8 -13 -8 z M316 260 h-34 M342 260 h20"/>
+  <text x="80" y="425" class="body">State: r, v</text>
+  <text x="80" y="452" class="body">Central gravity + Earth J2</text>
+  <text x="80" y="479" class="body">480 × 520 km, 51.6° inclination</text>
+  <text x="80" y="518" class="small">Earth-centred inertial coordinates</text>
+
+  <rect class="environment" x="440" y="120" width="320" height="190" rx="16"/>
+  <text x="465" y="155" class="heading">Environmental forces and torques</text>
+  <text x="465" y="190" class="body">• Co-rotating thin atmosphere + drag</text>
+  <text x="465" y="218" class="body">• Cylindrical eclipse + photon pressure</text>
+  <text x="465" y="246" class="body">• Solar-wind pressure sensitivity</text>
+  <text x="465" y="274" class="body">• Gravity gradient and centre-of-pressure</text>
+
+  <rect class="attitude" x="440" y="365" width="320" height="185" rx="16"/>
+  <text x="465" y="400" class="heading">Rigid-body attitude and control</text>
+  <text x="465" y="435" class="body">State: quaternion q, body rate ω</text>
+  <text x="465" y="463" class="body">Full Euler cross-axis coupling</text>
+  <text x="465" y="491" class="body">Quaternion feedback for inertial pointing</text>
+  <text x="465" y="519" class="body">3 saturated, first-order wheel channels</text>
+
+  <rect class="data" x="825" y="120" width="320" height="430" rx="16"/>
+  <text x="850" y="155" class="heading">Numerical telemetry and client access</text>
+  <text x="850" y="192" class="body">Native TOWS_c recorders</text>
+  <text x="850" y="220" class="small">position/velocity • altitude/density/eclipse</text>
+  <text x="850" y="243" class="small">quaternion/body rates • wheel/disturbance torque</text>
+  <path class="arrow" d="M875 280 H1090"/>
+  <text x="850" y="320" class="body">Small job</text>
+  <text x="850" y="346" class="small">simulate_xcos_model(inline)</text>
+  <text x="850" y="390" class="body">Large job</text>
+  <text x="850" y="416" class="small">simulate_xcos_model(artifact)</text>
+  <text x="850" y="439" class="small">→ CSV + manifest + checksums</text>
+  <text x="850" y="477" class="body">Focused follow-up</text>
+  <text x="850" y="503" class="small">read_xcos_simulation_artifact</text>
+  <text x="850" y="526" class="small">signal and time-window slice only</text>
+
+  <path class="arrow" d="M375 315 H415 V215 H440"/>
+  <path class="arrow" d="M375 350 H410 V458 H440"/>
+  <path class="arrow" d="M760 215 H800 V315 H825"/>
+  <path class="arrow" d="M760 458 H800 V380 H825"/>
+  <text x="55" y="640" class="subtitle">The MCP remains generic: spacecraft dynamics belong only to this Xcos example.</text>
+  <text x="55" y="668" class="small">Dashed orbit is illustrative; quantitative results are produced by the checked-in native diagram and its returned telemetry.</text>
+</svg>

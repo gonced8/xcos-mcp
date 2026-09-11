@@ -12,6 +12,8 @@ Python runner -> MCP stdio client -> xcos-mcp -> Scilab/Xcos -> numerical TOWS_c
 The checked-in diagram has 16 continuous states, 291 blocks, 442 links, and
 24 `TOWS_c` recorders.
 
+![Diagram of the coupled orbit, attitude, environment, and MCP telemetry flow](model_flow.svg)
+
 ## Quick start
 
 From the repository root, install the locked Python environment and run:
@@ -94,6 +96,8 @@ archive in the tool-response context.
 
 The checked-in result was run through real Scilab/Xcos and the MCP. It is a
 useful regression reference rather than a claim of flight qualification.
+
+![Altitude, attitude-error, and environmental-torque histories from the verified Xcos run](overview.svg)
 
 | Check | Result |
 | --- | ---: |
