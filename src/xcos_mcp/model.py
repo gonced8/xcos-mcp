@@ -169,6 +169,15 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
     blocks, links = _top_level_graph_objects(root)
     if not blocks:
         return {"applied": False, "reason": "no_top_level_blocks", "blocks_repositioned": 0}
+    if any(block.attrib.get("interfaceFunctionName") == "SPLIT_f" for block in blocks):
+        # Xcos computes SPLIT_f locations from its live graph and link-routing
+        # state.  Repositioning them from serialized XML is not equivalent to
+        # Format -> Auto-Position and can make a valid diagram unreadable.
+        return {
+            "applied": False,
+            "reason": "native_split_positioning_required",
+            "blocks_repositioned": 0,
+        }
     positions = {_geometry_position(block) for block in blocks}
     if not force and len(positions) > 1:
         return {"applied": False, "reason": "existing_layout_preserved", "blocks_repositioned": 0}
@@ -392,7 +401,7 @@ def save_model(
     xml_content: str,
     output_path: str,
     overwrite: bool = False,
-    auto_layout: bool = True,
+    auto_layout: bool = False,
 ) -> dict[str, object]:
     if not isinstance(xml_content, str) or not xml_content.strip():
         raise ValueError("xml_content must be non-empty")

@@ -17,12 +17,12 @@ of truth, which avoids version drift and redistribution ambiguity. A block
 template is also produced by the installed Xcos exporter instead of assembling
 undocumented XML from static snippets.
 
-`model.py` also provides a conservative presentation pass. Newly saved models
-whose top-level blocks all occupy the same position are arranged into
-left-to-right signal lanes. Existing geometry is preserved by default, while
-`layout_xcos_model(force=true)` gives a client an explicit opt-in to replace an
-authored layout. The pass changes only `mxGeometry` positions; it does not
-change interfaces, equations, parameters, ports, or links.
+`model.py` preserves authored geometry by default. Its optional presentation
+pass is intentionally limited to simple graphs. It declines diagrams containing
+`SPLIT_f` junctions because Xcos computes their native placement from live graph
+and link-routing state; changing serialized `mxGeometry` alone can make a valid
+diagram unreadable. The pass never changes interfaces, equations, parameters,
+ports, or links.
 
 All blocking filesystem and engine operations leave the MCP event loop through
 a worker thread. Scilab runs in a separate process group with a caller-provided

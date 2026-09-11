@@ -82,9 +82,9 @@ async def save_xcos_model(
     xml_content: str,
     output_path: str,
     overwrite: bool = False,
-    auto_layout: bool = True,
+    auto_layout: bool = False,
 ) -> dict[str, object]:
-    """Validate and atomically save Xcos XML, auto-laying out collapsed diagrams by default."""
+    """Validate and atomically save Xcos XML, preserving authored geometry by default."""
     return await run_blocking(save_model, xml_content, output_path, overwrite, auto_layout)
 
 
@@ -95,7 +95,7 @@ async def layout_xcos_model(
     overwrite: bool = False,
     force: bool = False,
 ) -> dict[str, object]:
-    """Create a readable left-to-right layout for a saved Xcos diagram without changing its equations."""
+    """Lay out a simple saved diagram without changing equations or geometry-rich split graphs."""
     return await run_blocking(layout_model, model_path, output_path, overwrite, force)
 
 

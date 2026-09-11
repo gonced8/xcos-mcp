@@ -34,5 +34,6 @@ def test_layout_implementation_preserves_equations_while_creating_a_new_diagram(
     result = layout_model(str(FIRST_ORDER_MODEL), str(destination), force=True)
 
     assert result["success"] is True
-    assert result["layout"]["applied"] is True
+    assert result["layout"]["applied"] is False
+    assert result["layout"]["reason"] == "native_split_positioning_required"
     assert destination.is_file()

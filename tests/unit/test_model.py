@@ -49,7 +49,7 @@ def test_save_auto_layout_separates_collapsed_top_level_blocks(monkeypatch, tmp_
       <BasicBlock id="source" interfaceFunctionName="CONST_m"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
       <BasicBlock id="target" interfaceFunctionName="GAINBLK"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
     </root></mxGraphModel></XcosDiagram>"""
-    result = save_model(xml, str(destination))
+    result = save_model(xml, str(destination), auto_layout=True)
     root = ET.parse(destination).getroot()
     positions = {
         block.attrib["id"]: (geometry.attrib["x"], geometry.attrib["y"])
@@ -72,7 +72,7 @@ def test_auto_layout_uses_signal_links_for_left_to_right_columns(monkeypatch, tm
       <ExplicitInputPort id="target_in" parent="target" ordering="1"/>
       <ExplicitLink id="flow" source="source_out" target="target_in"/>
     </root></mxGraphModel></XcosDiagram>"""
-    result = save_model(xml, str(destination))
+    result = save_model(xml, str(destination), auto_layout=True)
     report = inspect_model(str(destination))
     positions = {block["id"]: block["position"]["x"] for block in report["blocks"]}
 
@@ -80,7 +80,7 @@ def test_auto_layout_uses_signal_links_for_left_to_right_columns(monkeypatch, tm
     assert positions["source"] < positions["target"]
 
 
-def test_auto_layout_routes_feedback_and_separates_recorder_clock_pairs(monkeypatch, tmp_path: Path):
+def test_auto_layout_defers_split_graphs_to_native_xcos(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("XCOS_ALLOWED_MODEL_ROOTS", str(tmp_path))
     destination = tmp_path / "closed_loop.xcos"
     xml = """<XcosDiagram><mxGraphModel><root>
@@ -94,22 +94,16 @@ def test_auto_layout_routes_feedback_and_separates_recorder_clock_pairs(monkeypa
       <ExplicitInputPort id="recorder_in" parent="recorder" ordering="1"/><ControlPort id="recorder_event" parent="recorder" ordering="1"/>
       <BasicBlock id="clock" interfaceFunctionName="CLOCK_c"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
       <CommandPort id="clock_out" parent="clock" ordering="1"/>
+      <BasicBlock id="split" interfaceFunctionName="SPLIT_f"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
       <ExplicitLink id="reference_flow" source="reference_out" target="sum_ref"/>
       <ExplicitLink id="plant_flow" source="plant_out" target="sum_feedback"/>
       <ExplicitLink id="measurement" source="plant_out" target="recorder_in"/>
       <CommandControlLink id="sampling" source="clock_out" target="recorder_event"/>
     </root></mxGraphModel></XcosDiagram>"""
-    save_model(xml, str(destination))
-    root = ET.parse(destination).getroot()
-    blocks = {block.attrib["id"]: block for block in root.iter("BasicBlock")}
-    geometry = lambda identifier: next(blocks[identifier].iter("mxGeometry"))
-    feedback = next(link for link in root.iter("ExplicitLink") if link.attrib["id"] == "plant_flow")
-    points = next(child for child in feedback.iter("Array") if child.attrib.get("as") == "points")
+    result = save_model(xml, str(destination), auto_layout=True)
 
-    assert float(geometry("recorder").attrib["y"]) < float(geometry("plant").attrib["y"])
-    assert float(geometry("recorder").attrib["x"]) == float(geometry("plant").attrib["x"])
-    assert float(geometry("clock").attrib["y"]) < float(geometry("recorder").attrib["y"])
-    assert len(list(points)) == 2
+    assert result["layout"]["applied"] is False
+    assert result["layout"]["reason"] == "native_split_positioning_required"
 
 
 def test_allowed_roots_block_read_and_write(monkeypatch, tmp_path: Path):
