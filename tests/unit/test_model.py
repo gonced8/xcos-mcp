@@ -106,9 +106,9 @@ def test_auto_layout_routes_feedback_and_separates_recorder_clock_pairs(monkeypa
     feedback = next(link for link in root.iter("ExplicitLink") if link.attrib["id"] == "plant_flow")
     points = next(child for child in feedback.iter("Array") if child.attrib.get("as") == "points")
 
-    assert float(geometry("recorder").attrib["y"]) > float(geometry("plant").attrib["y"])
+    assert float(geometry("recorder").attrib["y"]) < float(geometry("plant").attrib["y"])
     assert float(geometry("recorder").attrib["x"]) == float(geometry("plant").attrib["x"])
-    assert float(geometry("clock").attrib["y"]) > float(geometry("recorder").attrib["y"])
+    assert float(geometry("clock").attrib["y"]) < float(geometry("recorder").attrib["y"])
     assert len(list(points)) == 2
 
 

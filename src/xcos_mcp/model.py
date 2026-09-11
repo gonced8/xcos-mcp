@@ -15,13 +15,13 @@ from .process import run_scilab_script, scilab_string, wait_for_files
 
 LINK_TAGS = {"ExplicitLink", "CommandControlLink", "ImplicitLink"}
 DEFAULT_MAX_MODEL_BYTES = 16 * 1024 * 1024
-LAYOUT_HORIZONTAL_SPACING = 105.0
-LAYOUT_VERTICAL_SPACING = 78.0
+LAYOUT_HORIZONTAL_SPACING = 80.0
+LAYOUT_VERTICAL_SPACING = 65.0
 LAYOUT_MARGIN = 40.0
-LAYOUT_MAIN_LANE_Y = 220.0
-LAYOUT_SIDE_LANE_Y = 420.0
-LAYOUT_RECORDER_LANE_Y = 820.0
-LAYOUT_CLOCK_LANE_Y = 920.0
+LAYOUT_MAIN_LANE_Y = 180.0
+LAYOUT_SIDE_LANE_Y = 300.0
+LAYOUT_RECORDER_LANE_Y = 60.0
+LAYOUT_CLOCK_LANE_Y = 10.0
 
 
 def _max_model_bytes() -> int:
@@ -259,7 +259,13 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
         for row, block in enumerate(column):
             geometry = _block_geometry(block)
             geometry.attrib["x"] = f"{LAYOUT_MARGIN + rank * LAYOUT_HORIZONTAL_SPACING:g}"
-            geometry.attrib["y"] = f"{LAYOUT_MAIN_LANE_Y + row * LAYOUT_VERTICAL_SPACING:g}"
+            lane_y = LAYOUT_MAIN_LANE_Y + row * LAYOUT_VERTICAL_SPACING
+            # SPLIT_f is a graphical junction rather than a full-sized block.
+            # Give it the small offset used by native Xcos examples so the
+            # junction lies on the signal line instead of below the diagram.
+            if block.attrib.get("interfaceFunctionName") == "SPLIT_f":
+                lane_y += 16.0
+            geometry.attrib["y"] = f"{lane_y:g}"
 
     # Place secondary-input-only branches near the summation they feed, but in
     # their own lower lane.  This is the familiar control-diagram convention.
@@ -300,9 +306,10 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
             clock_geometry.attrib["x"] = f"{source_x:g}"
             clock_geometry.attrib["y"] = f"{LAYOUT_CLOCK_LANE_Y:g}"
 
-    # Route feedbacks into progressively lower lanes, while all other vertical
-    # connections get a short two-corner route.  The points are persisted in
-    # the .xcos file and respected when the editor is reopened.
+    # Route only feedbacks into progressively lower lanes.  Xcos itself is the
+    # authority on ordinary connection geometry (especially around SPLIT_f and
+    # recorder ports); persisting guessed bend points for those links creates
+    # the very visual tangles this formatter is intended to prevent.
     feedback_order = sorted(
         feedback_connections,
         key=lambda item: abs(_geometry_position(by_id[str(item["source"])])[0] - _geometry_position(by_id[str(item["target"])])[0]),
@@ -315,13 +322,6 @@ def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
         if id(link) in feedback_lanes:
             lane_y = feedback_lanes[id(link)]
             _set_link_points(link, [(source_x + 32.0, lane_y), (target_x - 18.0, lane_y)])
-        elif abs(source_x - target_x) <= 1.0:
-            # Aligned recorder/clock pairs and vertical signal branches need no
-            # manual bend; Xcos renders them as a clean straight connection.
-            _set_link_points(link, [])
-        elif abs(source_y - target_y) > 1.0:
-            lane_y = (source_y + target_y) / 2.0
-            _set_link_points(link, [(source_x + 28.0, lane_y), (target_x - 16.0, lane_y)])
         else:
             _set_link_points(link, [])
     return {
