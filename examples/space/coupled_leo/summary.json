@@ -1,0 +1,45 @@
+{
+  "engine": "Scilab/Xcos",
+  "mcp_tools_used": [
+    "inspect_xcos_model",
+    "validate_xcos_model",
+    "simulate_xcos_model"
+  ],
+  "model_imported": true,
+  "duration_seconds": 12000.0,
+  "sample_period_seconds": 10.0,
+  "returned_samples": 1200,
+  "block_count": 291,
+  "link_count": 442,
+  "physics": {
+    "orbit": "3D Cartesian propagation with central gravity and J2",
+    "atmosphere": "co-rotating exponential thermosphere calibrated at 500 km",
+    "surface_forces": "density-dependent drag, eclipse-gated solar radiation plus solar-wind pressure",
+    "attitude": "nonlinear quaternion kinematics and Euler rigid-body coupling",
+    "torques": "gravity gradient, aerodynamic centre-of-pressure, photon and particle pressure",
+    "actuator": "three saturated first-order reaction-wheel torque channels"
+  },
+  "constants": {
+    "mu_m3_s2": 398600441500000.0,
+    "earth_equatorial_radius_m": 6378137.0,
+    "J2": 0.00108262668,
+    "earth_rotation_rad_s": 7.292115e-05,
+    "solar_pressure_Pa": 4.56e-06,
+    "solar_wind_pressure_Pa": 2e-09,
+    "mass_kg": 250.0
+  },
+  "metrics": {
+    "minimum_altitude_km": 472.63593929120526,
+    "maximum_altitude_km": 506.8878717181059,
+    "final_altitude_km": 475.30486674086285,
+    "observed_raan_change_deg": -0.638870028766004,
+    "first_order_J2_raan_change_deg": -0.6600621696118074,
+    "maximum_density_kg_m3": 1.0696757327594947e-12,
+    "eclipse_fraction": 0.35833333333333334,
+    "maximum_quaternion_norm_error": 3.375444992403942e-07,
+    "final_attitude_error_deg": 0.04637313011937642,
+    "maximum_attitude_error_deg": 10.310885006820964,
+    "peak_control_torque_Nm": 0.0024875995518438727,
+    "peak_environmental_torque_Nm": 2.0619694256031757e-05
+  }
+}

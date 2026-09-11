@@ -6,4 +6,4 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FIRST_ORDER_MODEL = PROJECT_ROOT / "examples" / "control" / "first_order.xcos"
-REALISTIC_SATELLITE_MODEL = PROJECT_ROOT / "examples" / "space" / "realistic_satellite_attitude.xcos"
+COUPLED_LEO_MODEL = PROJECT_ROOT / "examples" / "space" / "coupled_leo" / "coupled_leo.xcos"

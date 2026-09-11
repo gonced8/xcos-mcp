@@ -70,13 +70,16 @@ names, then pass those names to `simulate_xcos_model`.
 
 ## Spacecraft example
 
-The [three-axis spacecraft example](examples/space/README.md) builds a native
-Xcos diagram and then uses this MCP server to inspect, validate, and simulate
-it for 12,000 seconds. The checked-in run includes attitude, body-rate,
-reaction-wheel torque, and environmental-disturbance histories for all axes.
+The [coupled LEO example](examples/space/coupled_leo/) builds a native Xcos
+diagram and then uses this generic MCP server to inspect, validate, and
+simulate it for 12,000 seconds. It combines a propagated 3D J2 orbit,
+thin-atmosphere drag, eclipse-gated photon pressure, a solar-wind sensitivity,
+nonlinear quaternion dynamics, gravity-gradient and centre-of-pressure
+torques, and three-axis reaction-wheel control. All 24 telemetry channels
+return to the MCP client as numerical series.
 
 ```bash
-PYTHONPATH=src uv run python examples/space/run_realistic_satellite.py
+PYTHONPATH=src uv run python examples/space/coupled_leo/run.py
 ```
 
 ## Filesystem policy

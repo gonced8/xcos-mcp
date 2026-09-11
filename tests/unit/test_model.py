@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import FIRST_ORDER_MODEL, REALISTIC_SATELLITE_MODEL
+from tests.conftest import COUPLED_LEO_MODEL, FIRST_ORDER_MODEL
 from xcos_mcp.model import inspect_model, save_model
 
 
@@ -15,17 +15,19 @@ def test_inspection_finds_native_recorders():
     assert "TOWS_c" in {block["interface_function"] for block in report["blocks"]}
 
 
-def test_realistic_satellite_model_has_three_axis_telemetry():
-    report = inspect_model(str(REALISTIC_SATELLITE_MODEL))
+def test_coupled_leo_model_has_orbit_attitude_and_force_telemetry():
+    report = inspect_model(str(COUPLED_LEO_MODEL))
     expected = {
-        f"{kind}_{axis}"
-        for axis in ("roll", "pitch", "yaw")
-        for kind in ("theta", "omega", "control", "disturbance")
+        "x_m", "y_m", "z_m", "vx_mps", "vy_mps", "vz_mps",
+        "altitude_km", "speed_mps", "density_kgm3", "sunlight", "q_norm",
+        "q0", "q1", "q2", "q3", "wx_rads", "wy_rads", "wz_rads",
+        "control_x_Nm", "control_y_Nm", "control_z_Nm",
+        "disturbance_x_Nm", "disturbance_y_Nm", "disturbance_z_Nm",
     }
     assert report["success"] is True
     assert set(report["recorded_outputs"]) == expected
-    assert len(report["blocks"]) == 138
-    assert len(report["links"]) == 144
+    assert len(report["blocks"]) == 291
+    assert len(report["links"]) == 442
 
 
 def test_save_is_atomic_and_refuses_implicit_overwrite(monkeypatch, tmp_path: Path):

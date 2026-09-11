@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from tests.conftest import FIRST_ORDER_MODEL, REALISTIC_SATELLITE_MODEL
+from tests.conftest import COUPLED_LEO_MODEL, FIRST_ORDER_MODEL
 from xcos_mcp.catalog import create_block_template, list_blocks
 from xcos_mcp.process import resolve_scilab, runtime_info
 from xcos_mcp.simulation import simulate_first_order, simulate_model
@@ -44,16 +44,18 @@ def test_real_first_order_then_generic_arbitrary_duration():
     assert result["signals"]["first_order_y"][-1] == pytest.approx(1 - math.exp(-sampled_time), abs=0.01)
 
 
-def test_realistic_satellite_diagram_runs_in_native_xcos():
+def test_coupled_leo_diagram_returns_physical_telemetry_from_native_xcos():
     _require_native_xcos()
     result = simulate_model(
-        str(REALISTIC_SATELLITE_MODEL),
-        30.0,
-        ["theta_roll", "disturbance_roll", "theta_pitch", "theta_yaw"],
-        180.0,
+        str(COUPLED_LEO_MODEL),
+        60.0,
+        ["altitude_km", "q_norm", "disturbance_x_Nm", "control_z_Nm"],
+        300.0,
     )
     assert result["success"] is True
     assert result["engine"] == "Scilab/Xcos"
     assert result["aligned"] is True
-    assert result["original_sample_counts"]["theta_roll"] == 30
-    assert max(abs(value) for value in result["signals"]["disturbance_roll"]) > 1e-5
+    assert result["original_sample_counts"]["altitude_km"] == 6
+    assert result["signals"]["altitude_km"][-1] > 479.0
+    assert result["signals"]["q_norm"][-1] == pytest.approx(1.0, abs=1e-5)
+    assert max(abs(value) for value in result["signals"]["disturbance_x_Nm"]) > 1e-6
