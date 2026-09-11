@@ -4,6 +4,9 @@
   instrumentation is not implemented.
 - Diagram editing is XML-level. The server can create native single-block
   templates, but does not yet offer typed add/connect/configure operations.
+- Automatic layout is a conservative top-level signal-lane pass. It improves
+  collapsed generated diagrams, but does not yet optimize all feedback routes,
+  nested superblocks, annotations, or semantic subsystem grouping.
 - Native semantic validation currently confirms that Xcos imports the model;
   compile-only diagnostics are not normalized into structured issue codes.
 - Scilab's graphical runtime is required for Xcos import/export and simulation,

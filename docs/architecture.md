@@ -7,7 +7,7 @@ The implementation has five narrow layers:
 3. `process.py` discovers Scilab, bounds subprocesses, captures engine errors,
    and accounts for asynchronous Xcos artifact publication.
 4. `catalog.py` and `model.py` discover installed blocks and handle diagram
-   inspection, persistence, and native import validation.
+   inspection, layout, persistence, and native import validation.
 5. `simulation.py` drives `scicos_simulate`, reads `TOWS_c` CSV output, limits
    inline response size, persists run-addressed raw-data artifacts when requested,
    and calculates optional response metrics.
@@ -16,6 +16,13 @@ The MCP has no copied block database. The installed Scilab tree is the source
 of truth, which avoids version drift and redistribution ambiguity. A block
 template is also produced by the installed Xcos exporter instead of assembling
 undocumented XML from static snippets.
+
+`model.py` also provides a conservative presentation pass. Newly saved models
+whose top-level blocks all occupy the same position are arranged into
+left-to-right signal lanes. Existing geometry is preserved by default, while
+`layout_xcos_model(force=true)` gives a client an explicit opt-in to replace an
+authored layout. The pass changes only `mxGeometry` positions; it does not
+change interfaces, equations, parameters, ports, or links.
 
 All blocking filesystem and engine operations leave the MCP event loop through
 a worker thread. Scilab runs in a separate process group with a caller-provided

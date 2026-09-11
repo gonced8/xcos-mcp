@@ -15,6 +15,9 @@ from .process import run_scilab_script, scilab_string, wait_for_files
 
 LINK_TAGS = {"ExplicitLink", "CommandControlLink", "ImplicitLink"}
 DEFAULT_MAX_MODEL_BYTES = 16 * 1024 * 1024
+LAYOUT_HORIZONTAL_SPACING = 105.0
+LAYOUT_VERTICAL_SPACING = 78.0
+LAYOUT_MARGIN = 40.0
 
 
 def _max_model_bytes() -> int:
@@ -111,6 +114,117 @@ def structural_issues(root: ET.Element) -> list[dict[str, str]]:
     return issues
 
 
+def _top_level_graph_objects(root: ET.Element) -> tuple[list[ET.Element], list[ET.Element]]:
+    """Return executable top-level blocks and links, excluding nested superblocks."""
+    graph = next((element for element in root.iter() if _local_name(element.tag) == "root"), None)
+    if graph is None:
+        return [], []
+    blocks = [element for element in graph if element.attrib.get("interfaceFunctionName")]
+    links = [element for element in graph if _local_name(element.tag) in LINK_TAGS]
+    return blocks, links
+
+
+def _block_geometry(block: ET.Element) -> ET.Element:
+    geometry = next((child for child in block if _local_name(child.tag) == "mxGeometry"), None)
+    if geometry is None:
+        geometry = ET.SubElement(block, "mxGeometry", {"as": "geometry"})
+    return geometry
+
+
+def _geometry_position(block: ET.Element) -> tuple[float, float]:
+    geometry = _block_geometry(block)
+    return float(geometry.attrib.get("x", 0)), float(geometry.attrib.get("y", 0))
+
+
+def _layout_root(root: ET.Element, *, force: bool = False) -> dict[str, object]:
+    """Lay out a top-level Xcos signal graph with readable left-to-right lanes.
+
+    The Xcos XML stores block geometry but does not require static link routes;
+    Xcos redraws routes when the diagram is opened. Feedback inputs on a
+    summation block are excluded from rank propagation so closed loops retain a
+    readable forward path instead of collapsing into one column.
+    """
+    blocks, links = _top_level_graph_objects(root)
+    if not blocks:
+        return {"applied": False, "reason": "no_top_level_blocks", "blocks_repositioned": 0}
+    positions = {_geometry_position(block) for block in blocks}
+    if not force and len(positions) > 1:
+        return {"applied": False, "reason": "existing_layout_preserved", "blocks_repositioned": 0}
+
+    by_id = {block.attrib.get("id"): block for block in blocks if block.attrib.get("id")}
+    port_parent: dict[str, str] = {}
+    port_order: dict[str, int] = {}
+    for port in root.iter():
+        port_id = port.attrib.get("id")
+        parent_id = port.attrib.get("parent")
+        if port_id and parent_id in by_id:
+            port_parent[port_id] = parent_id
+            port_order[port_id] = int(port.attrib.get("ordering", "1"))
+
+    document_order = {identifier: index for index, identifier in enumerate(by_id)}
+    edges: list[tuple[str, str]] = []
+    for link in links:
+        if _local_name(link.tag) != "ExplicitLink":
+            continue
+        source = port_parent.get(link.attrib.get("source", ""))
+        target = port_parent.get(link.attrib.get("target", ""))
+        if not source or not target or source == target:
+            continue
+        target_block = by_id[target]
+        # A later input on a SUMMATION block is normally feedback or a
+        # disturbance injection. It must not force the forward signal graph
+        # into a cyclic layout.
+        if (
+            target_block.attrib.get("interfaceFunctionName") == "SUMMATION"
+            and port_order.get(link.attrib.get("target", ""), 1) > 1
+        ):
+            continue
+        # Most generated models serialize the forward path in block order.
+        # Ignore ordinary reverse links as feedback; SPLIT_f blocks are inserted
+        # after their source by Xcos generators and remain forward fan-outs.
+        if (
+            by_id[source].attrib.get("interfaceFunctionName") != "SPLIT_f"
+            and document_order[source] > document_order[target]
+        ):
+            continue
+        edges.append((source, target))
+
+    ranks = {identifier: 0 for identifier in by_id}
+    for _ in range(len(by_id)):
+        changed = False
+        for source, target in edges:
+            source_block = by_id[source]
+            increment = 0 if source_block.attrib.get("interfaceFunctionName") == "SPLIT_f" else 1
+            candidate = ranks[source] + increment
+            if candidate > ranks[target]:
+                ranks[target] = candidate
+                changed = True
+        if not changed:
+            break
+
+    columns: dict[int, list[ET.Element]] = {}
+    for block in blocks:
+        identifier = block.attrib.get("id")
+        if identifier:
+            columns.setdefault(ranks[identifier], []).append(block)
+    for rank, column in columns.items():
+        column.sort(key=lambda block: (
+            block.attrib.get("interfaceFunctionName") == "CLOCK_c",
+            block.attrib.get("interfaceFunctionName") == "TOWS_c",
+            block.attrib.get("id", ""),
+        ))
+        for row, block in enumerate(column):
+            geometry = _block_geometry(block)
+            geometry.attrib["x"] = f"{LAYOUT_MARGIN + rank * LAYOUT_HORIZONTAL_SPACING:g}"
+            geometry.attrib["y"] = f"{LAYOUT_MARGIN + row * LAYOUT_VERTICAL_SPACING:g}"
+    return {
+        "applied": True,
+        "reason": "forced" if force else "collapsed_geometry",
+        "blocks_repositioned": len(blocks),
+        "columns": len(columns),
+    }
+
+
 def inspect_model(model_path: str) -> dict[str, Any]:
     path, root = parse_xcos(model_path)
     blocks = []
@@ -148,20 +262,7 @@ def inspect_model(model_path: str) -> dict[str, Any]:
     }
 
 
-def save_model(xml_content: str, output_path: str, overwrite: bool = False) -> dict[str, object]:
-    if not isinstance(xml_content, str) or not xml_content.strip():
-        raise ValueError("xml_content must be non-empty")
-    encoded = xml_content.encode("utf-8")
-    limit = _max_model_bytes()
-    if len(encoded) > limit:
-        raise ValueError(f"Xcos model exceeds the {limit} byte limit")
-    root = ET.fromstring(xml_content)
-    if _local_name(root.tag) != "XcosDiagram":
-        raise ValueError("XML root must be XcosDiagram")
-    issues = structural_issues(root)
-    if any(item["severity"] == "error" for item in issues):
-        raise ValueError(f"Model has structural errors: {issues}")
-    destination = resolve_output_path(output_path)
+def _write_model(root: ET.Element, destination: Path, overwrite: bool) -> dict[str, object]:
     if destination.exists() and not overwrite:
         raise FileExistsError(f"Refusing to overwrite existing model: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -177,6 +278,49 @@ def save_model(xml_content: str, output_path: str, overwrite: bool = False) -> d
         if os.path.exists(temporary_name):
             os.unlink(temporary_name)
     return {"success": True, "model_path": str(destination), "bytes_written": len(payload)}
+
+
+def save_model(
+    xml_content: str,
+    output_path: str,
+    overwrite: bool = False,
+    auto_layout: bool = True,
+) -> dict[str, object]:
+    if not isinstance(xml_content, str) or not xml_content.strip():
+        raise ValueError("xml_content must be non-empty")
+    encoded = xml_content.encode("utf-8")
+    limit = _max_model_bytes()
+    if len(encoded) > limit:
+        raise ValueError(f"Xcos model exceeds the {limit} byte limit")
+    root = ET.fromstring(xml_content)
+    if _local_name(root.tag) != "XcosDiagram":
+        raise ValueError("XML root must be XcosDiagram")
+    issues = structural_issues(root)
+    if any(item["severity"] == "error" for item in issues):
+        raise ValueError(f"Model has structural errors: {issues}")
+    if not isinstance(auto_layout, bool):
+        raise ValueError("auto_layout must be a boolean")
+    destination = resolve_output_path(output_path)
+    layout = _layout_root(root) if auto_layout else {"applied": False, "reason": "disabled", "blocks_repositioned": 0}
+    return {**_write_model(root, destination, overwrite), "layout": layout}
+
+
+def layout_model(
+    model_path: str,
+    output_path: str,
+    overwrite: bool = False,
+    force: bool = False,
+) -> dict[str, object]:
+    """Persist a readable left-to-right layout for a saved Xcos diagram."""
+    if not isinstance(force, bool):
+        raise ValueError("force must be a boolean")
+    _, root = parse_xcos(model_path)
+    issues = structural_issues(root)
+    if any(item["severity"] == "error" for item in issues):
+        raise ValueError(f"Model has structural errors: {issues}")
+    destination = resolve_output_path(output_path)
+    layout = _layout_root(root, force=force)
+    return {**_write_model(root, destination, overwrite), "layout": layout}
 
 
 def validate_model(model_path: str, timeout_seconds: float = 120.0) -> dict[str, object]:

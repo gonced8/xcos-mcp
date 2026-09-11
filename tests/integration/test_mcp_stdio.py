@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import tempfile
 
 import pytest
 from mcp import ClientSession
@@ -20,11 +21,15 @@ def test_stdio_mcp_reaches_real_xcos_and_returns_numbers():
     if resolve_scilab(gui=True) is None or shutil.which("xvfb-run") is None:
         pytest.skip("native Scilab/Xcos is unavailable")
 
-    async def exercise() -> dict:
+    async def exercise(layout_path: Path, allowed_roots: str) -> dict:
         parameters = StdioServerParameters(
             command=str(Path(".venv/bin/python").absolute()),
             args=["-m", "xcos_mcp"],
-            env={**os.environ, "PYTHONPATH": str(Path("src").resolve())},
+            env={
+                **os.environ,
+                "PYTHONPATH": str(Path("src").resolve()),
+                "XCOS_ALLOWED_MODEL_ROOTS": allowed_roots,
+            },
         )
         async with stdio_client(parameters) as streams:
             async with ClientSession(*streams) as session:
@@ -34,7 +39,18 @@ def test_stdio_mcp_reaches_real_xcos_and_returns_numbers():
                     "simulate_first_order_model",
                     "simulate_xcos_model",
                     "read_xcos_simulation_artifact",
+                    "layout_xcos_model",
                 } <= names
+                layout_response = await session.call_tool(
+                    "layout_xcos_model",
+                    {
+                        "model_path": str(Path("examples/control/first_order.xcos").resolve()),
+                        "output_path": str(layout_path),
+                        "force": True,
+                    },
+                )
+                assert layout_response.isError is False
+                layout = json.loads(layout_response.content[0].text)
                 response = await session.call_tool(
                     "simulate_first_order_model",
                     {"duration_seconds": 2.0, "timeout_seconds": 90.0},
@@ -63,9 +79,13 @@ def test_stdio_mcp_reaches_real_xcos_and_returns_numbers():
                     },
                 )
                 assert slice_response.isError is False
-                return {"inline": inline, "slice": json.loads(slice_response.content[0].text)}
+                return {"inline": inline, "slice": json.loads(slice_response.content[0].text), "layout": layout}
 
-    payload = asyncio.run(exercise())
+    with tempfile.TemporaryDirectory(prefix="xcos-mcp-layout-test-") as directory:
+        layout_path = Path(directory) / "laid_out.xcos"
+        payload = asyncio.run(exercise(layout_path, os.pathsep.join((directory, str(Path.cwd())))))
+        assert layout_path.is_file()
     assert payload["inline"]["engine"] == "Scilab/Xcos"
     assert payload["inline"]["signals"]["y"][-1] > 0.8
     assert payload["slice"]["signals"]["first_order_y"][-1] > 0.8
+    assert payload["layout"]["layout"]["applied"] is True

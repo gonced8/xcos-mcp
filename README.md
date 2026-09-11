@@ -58,7 +58,8 @@ Example MCP client configuration:
 | `get_xcos_block_source` | Read an installed block interface definition. |
 | `create_xcos_block_template` | Ask Xcos to export a native one-block diagram. |
 | `inspect_xcos_model` | Report blocks, links, duration, and `TOWS_c` outputs. |
-| `save_xcos_model` | Structurally check and atomically save Xcos XML. |
+| `save_xcos_model` | Structurally check, auto-layout collapsed diagrams, and atomically save Xcos XML. |
+| `layout_xcos_model` | Reformat an existing diagram into readable left-to-right signal lanes. |
 | `validate_xcos_model` | Import a diagram using real Scilab/Xcos. |
 | `simulate_xcos_model` | Simulate a diagram; return named series inline or persist raw recorder data as an artifact. |
 | `read_xcos_simulation_artifact` | Read selected signals and a bounded time window from a persisted simulation artifact. |
@@ -68,6 +69,12 @@ Example MCP client configuration:
 Numerical extraction currently requires each requested signal to terminate in
 a `TOWS_c` block. Use `inspect_xcos_model` to find the configured variable
 names, then pass those names to `simulate_xcos_model`.
+
+Generated diagrams should be readable as well as executable. `save_xcos_model`
+automatically separates blocks when all top-level geometry is collapsed at the
+same position. It leaves an existing layout unchanged. Use
+`layout_xcos_model` for an explicit re-layout of a saved diagram; set
+`force=true` only when deliberately replacing an existing authored layout.
 
 `simulate_xcos_model` defaults to `result_mode="inline"` for small numerical
 jobs. For long, high-rate, or many-signal simulations, set

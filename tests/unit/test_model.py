@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
@@ -39,6 +40,44 @@ def test_save_is_atomic_and_refuses_implicit_overwrite(monkeypatch, tmp_path: Pa
     assert destination.is_file()
     with pytest.raises(FileExistsError):
         save_model(xml, str(destination))
+
+
+def test_save_auto_layout_separates_collapsed_top_level_blocks(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("XCOS_ALLOWED_MODEL_ROOTS", str(tmp_path))
+    destination = tmp_path / "laid_out.xcos"
+    xml = """<XcosDiagram><mxGraphModel><root>
+      <BasicBlock id="source" interfaceFunctionName="CONST_m"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
+      <BasicBlock id="target" interfaceFunctionName="GAINBLK"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
+    </root></mxGraphModel></XcosDiagram>"""
+    result = save_model(xml, str(destination))
+    root = ET.parse(destination).getroot()
+    positions = {
+        block.attrib["id"]: (geometry.attrib["x"], geometry.attrib["y"])
+        for block in root.iter("BasicBlock")
+        for geometry in block.iter("mxGeometry")
+    }
+
+    assert result["layout"]["applied"] is True
+    assert result["layout"]["blocks_repositioned"] == 2
+    assert len(set(positions.values())) == 2
+
+
+def test_auto_layout_uses_signal_links_for_left_to_right_columns(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("XCOS_ALLOWED_MODEL_ROOTS", str(tmp_path))
+    destination = tmp_path / "signal_flow.xcos"
+    xml = """<XcosDiagram><mxGraphModel><root>
+      <BasicBlock id="source" interfaceFunctionName="CONST_m"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
+      <ExplicitOutputPort id="source_out" parent="source" ordering="1"/>
+      <BasicBlock id="target" interfaceFunctionName="GAINBLK"><mxGeometry as="geometry" x="0" y="0"/></BasicBlock>
+      <ExplicitInputPort id="target_in" parent="target" ordering="1"/>
+      <ExplicitLink id="flow" source="source_out" target="target_in"/>
+    </root></mxGraphModel></XcosDiagram>"""
+    result = save_model(xml, str(destination))
+    report = inspect_model(str(destination))
+    positions = {block["id"]: block["position"]["x"] for block in report["blocks"]}
+
+    assert result["layout"]["columns"] == 2
+    assert positions["source"] < positions["target"]
 
 
 def test_allowed_roots_block_read_and_write(monkeypatch, tmp_path: Path):

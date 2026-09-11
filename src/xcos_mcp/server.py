@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .async_utils import run_blocking
 from .catalog import block_source, create_block_template, list_blocks
-from .model import inspect_model, save_model, validate_model
+from .model import inspect_model, layout_model, save_model, validate_model
 from .process import runtime_info
 from .simulation import (
     analyze_step_response as calculate_step_response,
@@ -82,9 +82,21 @@ async def save_xcos_model(
     xml_content: str,
     output_path: str,
     overwrite: bool = False,
+    auto_layout: bool = True,
 ) -> dict[str, object]:
-    """Validate basic structure and atomically save Xcos XML inside an allowed root."""
-    return await run_blocking(save_model, xml_content, output_path, overwrite)
+    """Validate and atomically save Xcos XML, auto-laying out collapsed diagrams by default."""
+    return await run_blocking(save_model, xml_content, output_path, overwrite, auto_layout)
+
+
+@mcp.tool()
+async def layout_xcos_model(
+    model_path: str,
+    output_path: str,
+    overwrite: bool = False,
+    force: bool = False,
+) -> dict[str, object]:
+    """Create a readable left-to-right layout for a saved Xcos diagram without changing its equations."""
+    return await run_blocking(layout_model, model_path, output_path, overwrite, force)
 
 
 @mcp.tool()
